@@ -1,6 +1,7 @@
 package main
 
 import (
+	"aks-wireguard-overlay/pkg/overlay"
 	"aks-wireguard-overlay/pkg/wireguard"
 	"context"
 	"errors"
@@ -31,6 +32,27 @@ var addedPeers map[string]string
 func main() {
 	defer klog.Flush()
 	addedPeers = make(map[string]string)
+	nodeName := os.Getenv("NODE_NAME")
+	nodeIP := os.Getenv("NODE_IP")
+	cfg := overlay.KubernetesConfig{NodeName: nodeName, UnderlayIP: nodeIP, OverlayCIDR: "100.64.0.0/16"}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Fatal(err)
+	}
+
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		klog.Fatal(err)
+	}
+
+	cfg.Client = client
+
+	networkService := overlay.NewWireGuardNetworkService(cfg)
+	err = networkService.Run()
+	if err != nil {
+		klog.Fatal(err)
+	}
+	klog.Info("wireguard network service shutting down")
 	for {
 		func() {
 			klog.Info("starting sync...")

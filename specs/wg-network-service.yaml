@@ -59,8 +59,18 @@ spec:
           type: DirectoryOrCreate
       containers:
       - name: wireguard-network-service
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         image: tylloyd/wg-network-service:v20220217-a
         imagePullPolicy: Always
+        command: ["/wireguard-network-service"]
         volumeMounts:
         - mountPath: /etc/wireguard
           name: wg-vol
@@ -111,9 +121,12 @@ spec:
           - bash
           - -ce
           - |
-            echo "Installing wireguard..."
-            sudo apt update
-            sudo apt install -y wireguard
+            missingWg=$(dpkg -s wireguard | grep "install ok")
+            if [ -z "$missingWg" ]; then
+              echo "Installing wireguard..."
+              sudo apt update
+              sudo apt install -y wireguard
+            fi
             PRIVATE_KEY_FILE=/etc/wireguard/privatekey
             PUBLIC_KEY_FILE=/etc/wireguard/publickey
 
@@ -130,5 +143,9 @@ spec:
               cat /etc/wireguard/privatekey | sudo wg pubkey > /etc/wireguard/publickey
             fi
             if [ -f "/etc/wireguard/wg0.conf" ]; then
-              rm /etc/wireguard/wg0.conf
+              echo "found existing wg0.conf"
+            else
+              touch /etc/wireguard/wg0.conf
             fi
+            systemctl enable wg-quick@wg0.service
+            systemctl start wg-quick@wg0.service

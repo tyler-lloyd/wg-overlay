@@ -1,9 +1,12 @@
 package wireguard
 
-import "net"
+const (
+	WireguardPublicKeyAnnotationName = "wireguard-publickey"
+	WireguardIPAnnotationName        = "wireguard-ip"
+)
 
 type Host struct {
-	Address    *net.IPNet
+	Address    string
 	PrivateKey string
 	ListenPort int
 	SaveConfig *bool
