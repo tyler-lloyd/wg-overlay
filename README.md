@@ -20,7 +20,8 @@ This service's potential is met when the underlying network between nodes has sc
 
 ## Limitations
 
-There are many optimizations still to be made re: scale and reliability:
+There are optimizations still to be made re: scale and reliability:
 
 - the daemon should setup a watch on nodes rather than listing nodes on each sync. lacking a watch, this can likely cause problems with massive (> 1000 node) clusters
-- potentially many calls to restart the wg0.service which sets up / tears down network links on the host each time -- improve the communication between the daemonset and the host to be able to add peers with the `wg` and `wg-quick` utilities. 
+- potentially many calls to restart the wg0.service which sets up / tears down network links on the host each time -- improve the communication between the daemonset and the host to be able to add peers with the `wg` and `wg-quick` utilities
+- currently, it is assumed the node CIDR will not be using a prefix shorter than `/16` and not be in the `100.64.0.0/16` range. Therefore to keep the overlay IP management as simple as possible, the network service keeps the lower 2 octects from the IPv4 node IP and changes the first two to the default overlay subnet mask `100.64`. 
