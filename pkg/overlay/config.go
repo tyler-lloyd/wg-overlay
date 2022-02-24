@@ -1,10 +1,8 @@
 package overlay
 
-import "k8s.io/client-go/kubernetes"
-
-type KubernetesConfig struct {
+type Config struct {
 	OverlayCIDR string
+	OverlayIP   string
 	UnderlayIP  string
 	NodeName    string
-	Client      *kubernetes.Clientset
 }

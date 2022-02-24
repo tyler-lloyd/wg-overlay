@@ -2,6 +2,8 @@ package wireguard
 
 import (
 	"bufio"
+	"errors"
+	"io/fs"
 	"os"
 	"regexp"
 	"strconv"
@@ -14,10 +16,12 @@ const (
 	KeyValuePattern = `^(\S+)[\s]+=[\s]+(.+)$`
 )
 
-func ParseConfigFile(fileName string) (WireguardConfiguration, error) {
-	config := WireguardConfiguration{}
+func ParseConfFile(fileName string) (Config, error) {
+	config := Config{}
 	fd, err := os.Open(fileName)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
+		return config, nil
+	} else if err != nil {
 		return config, err
 	}
 	defer fd.Close()

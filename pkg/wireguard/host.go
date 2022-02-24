@@ -9,5 +9,4 @@ type Host struct {
 	Address    string
 	PrivateKey string
 	ListenPort int
-	SaveConfig *bool
 }

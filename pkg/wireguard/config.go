@@ -7,7 +7,7 @@ const (
 	FileWireguardUpdate     = "/etc/wireguard/update"
 )
 
-type WireguardConfiguration struct {
+type Config struct {
 	HostInterface Host
 	Peers         []Peer
 }

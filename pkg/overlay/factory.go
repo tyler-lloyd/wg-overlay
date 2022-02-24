@@ -1,8 +1,15 @@
 package overlay
 
-func NewWireGuardNetworkService(config KubernetesConfig) OverlayNetworkService {
+import (
+	"aks-wireguard-overlay/pkg/wireguard"
+
+	"k8s.io/client-go/kubernetes"
+)
+
+func NewWireGuardNetworkService(config Config, k *kubernetes.Clientset) OverlayNetworkService {
 	return &WireGuardNetworkService{
-		config:    config,
-		nodeCache: map[string]string{},
+		overlayConf: config,
+		cache:       map[string]wireguard.Peer{},
+		kubeclient:  k,
 	}
 }

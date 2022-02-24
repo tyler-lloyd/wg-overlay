@@ -1,6 +1,8 @@
 package wireguard
 
 import (
+	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
@@ -25,7 +27,7 @@ func TestParseConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	cfg, err := ParseConfigFile("/tmp/wireguardtest.conf")
+	cfg, err := ParseConfFile("/tmp/wireguardtest.conf")
 	if err != nil {
 		t.Error(err)
 	}

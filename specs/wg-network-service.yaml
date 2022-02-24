@@ -60,6 +60,8 @@ spec:
       containers:
       - name: wireguard-network-service
         env:
+        - name: OVERLAY_CIDR
+          value: 100.64.0.0/16
         - name: NODE_NAME
           valueFrom:
             fieldRef:
@@ -68,7 +70,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: tylloyd/wg-network-service:v20220217-a
+        image: tylloyd/wg-network-service:v20220223-a
         imagePullPolicy: Always
         command: ["/wireguard-network-service"]
         volumeMounts:
