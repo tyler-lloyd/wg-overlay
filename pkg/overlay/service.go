@@ -68,18 +68,20 @@ func (o *WireGuardNetworkService) syncCache() {
 }
 
 func (o *WireGuardNetworkService) syncHost() error {
-	pk, err := os.ReadFile(wireguard.FileWireguardKeyPrivate)
+	b, err := os.ReadFile(wireguard.FileWireguardKeyPrivate)
 	if err != nil {
 		return err
 	}
+	privateKey := string(b)
+	privateKey = strings.TrimRight(privateKey, "\n")
 	hostInterface := wireguard.Host{
 		Address:    o.overlayConf.OverlayIP,
-		PrivateKey: string(pk),
+		PrivateKey: privateKey,
 		ListenPort: DefaultListenPort,
 	}
 	o.wireguardConf.HostInterface = hostInterface
 
-	selfNode, err := o.kubeclient.CoreV1().Nodes().Get(context.Background(), o.overlayConf.NodeName, metav1.GetOptions{})
+	selfNode, err := o.kubeclient.CoreV1().Nodes().Get(context.TODO(), o.overlayConf.NodeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -88,15 +90,17 @@ func (o *WireGuardNetworkService) syncHost() error {
 		selfNode.Annotations[wireguard.WireguardIPAnnotationName] = hostInterface.Address
 	}
 
-	pubKey, err := os.ReadFile(wireguard.FileWireguardKeyPublic)
+	b, err = os.ReadFile(wireguard.FileWireguardKeyPublic)
 	if err != nil {
 		return err
 	}
-	if pub, ok := selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName]; !ok || pub != string(pubKey) {
-		selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName] = string(pubKey)
+	pubKey := string(b)
+	pubKey = strings.TrimRight(pubKey, "\n")
+	if pub, ok := selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName]; !ok || pub != pubKey {
+		selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName] = pubKey
 	}
 
-	_, err = o.kubeclient.CoreV1().Nodes().Update(context.Background(), selfNode, metav1.UpdateOptions{})
+	_, err = o.kubeclient.CoreV1().Nodes().Update(context.TODO(), selfNode, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -104,7 +108,7 @@ func (o *WireGuardNetworkService) syncHost() error {
 }
 
 func (o *WireGuardNetworkService) syncPeers() error {
-	nodes, err := o.kubeclient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	nodes, err := o.kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -119,10 +123,12 @@ func (o *WireGuardNetworkService) syncPeers() error {
 		wgIP, hasIP := node.Annotations[wireguard.WireguardIPAnnotationName]
 		publicKey, hasPubKey := node.Annotations[wireguard.WireguardPublicKeyAnnotationName]
 		if hasIP && hasPubKey {
+			allowedIPs := node.Spec.PodCIDRs
+			allowedIPs = append(allowedIPs, wgIP+"/32")
 			peer := wireguard.Peer{
 				PublicKey:  publicKey,
-				AllowedIPs: []string{wgIP + "/32", node.Spec.PodCIDR},
-				Endpoint:   getHostEndpoint(node),
+				AllowedIPs: allowedIPs,
+				Endpoint:   fmt.Sprintf("%s:%d", getHostEndpoint(node), DefaultListenPort),
 			}
 			o.wireguardConf.Peers = append(o.wireguardConf.Peers, peer)
 		}

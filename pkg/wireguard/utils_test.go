@@ -1,8 +1,6 @@
 package wireguard
 
 import (
-	"crypto/md5"
-	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"

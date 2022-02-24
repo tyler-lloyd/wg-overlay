@@ -123,12 +123,9 @@ spec:
           - bash
           - -ce
           - |
-            missingWg=$(dpkg -s wireguard | grep "install ok")
-            if [ -z "$missingWg" ]; then
-              echo "Installing wireguard..."
-              sudo apt update
-              sudo apt install -y wireguard
-            fi
+            echo "Installing wireguard..."
+            sudo apt update
+            sudo apt install -y wireguard
             PRIVATE_KEY_FILE=/etc/wireguard/privatekey
             PUBLIC_KEY_FILE=/etc/wireguard/publickey
 
