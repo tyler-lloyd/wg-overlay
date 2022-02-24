@@ -70,7 +70,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: tylloyd/wg-network-service:v20220223-a
+        image: tylloyd/wg-network-service:v20220223-b
         imagePullPolicy: Always
         command: ["/wireguard-network-service"]
         volumeMounts:
@@ -91,7 +91,7 @@ spec:
           - --pid
           - --
           - bash
-          - -exc
+          - -ce
           - |
             while :
             do
