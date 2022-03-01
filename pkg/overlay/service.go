@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -16,7 +15,6 @@ import (
 
 const (
 	syncInterval                            = 5 * time.Second
-	DefaultListenPort                       = 51820
 	WireguardConfigurationInterfaceTemplate = "[Interface]\nAddress = %s\nListenPort = %d\nPrivateKey = %s\n"
 	WireguardConfigurationPeerTemplate      = "[Peer]\nPublicKey = %s\nAllowedIPs = %s\nEndpoint = %s\n"
 )
@@ -68,16 +66,9 @@ func (o *WireGuardNetworkService) syncCache() {
 }
 
 func (o *WireGuardNetworkService) syncHost() error {
-	b, err := os.ReadFile(wireguard.FileWireguardKeyPrivate)
+	hostInterface, err := wireguard.NewHost(o.overlayConf.OverlayIP)
 	if err != nil {
 		return err
-	}
-	privateKey := string(b)
-	privateKey = strings.TrimRight(privateKey, "\n")
-	hostInterface := wireguard.Host{
-		Address:    o.overlayConf.OverlayIP,
-		PrivateKey: privateKey,
-		ListenPort: DefaultListenPort,
 	}
 	o.wireguardConf.HostInterface = hostInterface
 
@@ -86,23 +77,15 @@ func (o *WireGuardNetworkService) syncHost() error {
 		return err
 	}
 
-	if ip, ok := selfNode.Annotations[wireguard.WireguardIPAnnotationName]; !ok || ip != hostInterface.Address {
-		selfNode.Annotations[wireguard.WireguardIPAnnotationName] = hostInterface.Address
-	}
-
-	b, err = os.ReadFile(wireguard.FileWireguardKeyPublic)
+	update, err := hostInterface.Annotate(selfNode)
 	if err != nil {
 		return err
 	}
-	pubKey := string(b)
-	pubKey = strings.TrimRight(pubKey, "\n")
-	if pub, ok := selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName]; !ok || pub != pubKey {
-		selfNode.Annotations[wireguard.WireguardPublicKeyAnnotationName] = pubKey
-	}
-
-	_, err = o.kubeclient.CoreV1().Nodes().Update(context.TODO(), selfNode, metav1.UpdateOptions{})
-	if err != nil {
-		return err
+	if update {
+		_, err = o.kubeclient.CoreV1().Nodes().Update(context.TODO(), selfNode, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -120,29 +103,12 @@ func (o *WireGuardNetworkService) syncPeers() error {
 			continue
 		}
 
-		wgIP, hasIP := node.Annotations[wireguard.WireguardIPAnnotationName]
-		publicKey, hasPubKey := node.Annotations[wireguard.WireguardPublicKeyAnnotationName]
-		if hasIP && hasPubKey {
-			allowedIPs := node.Spec.PodCIDRs
-			allowedIPs = append(allowedIPs, wgIP+"/32")
-			peer := wireguard.Peer{
-				PublicKey:  publicKey,
-				AllowedIPs: allowedIPs,
-				Endpoint:   fmt.Sprintf("%s:%d", getHostEndpoint(node), DefaultListenPort),
-			}
-			o.wireguardConf.Peers = append(o.wireguardConf.Peers, peer)
-		}
+		if peer, err := wireguard.FromNode(node); err != nil {
+			o.wireguardConf.Peers = append(o.wireguardConf.Peers, *peer)
+		} //else log err?
+
 	}
 	return nil
-}
-
-func getHostEndpoint(node corev1.Node) string {
-	for _, addr := range node.Status.Addresses {
-		if addr.Type == corev1.NodeInternalIP {
-			return addr.Address
-		}
-	}
-	return ""
 }
 
 func (o *WireGuardNetworkService) syncWireguardConfig() error {
@@ -170,7 +136,7 @@ func (o *WireGuardNetworkService) syncWireguardConfig() error {
 	if needWgQuickRestart {
 		s := strings.Builder{}
 
-		s.WriteString(fmt.Sprintf(WireguardConfigurationInterfaceTemplate, o.wireguardConf.HostInterface.Address, DefaultListenPort, o.wireguardConf.HostInterface.PrivateKey))
+		s.WriteString(fmt.Sprintf(WireguardConfigurationInterfaceTemplate, o.wireguardConf.HostInterface.Address, wireguard.DefaultListenPort, o.wireguardConf.HostInterface.PrivateKey))
 
 		for _, peer := range o.wireguardConf.Peers {
 			s.WriteString(fmt.Sprintf(WireguardConfigurationPeerTemplate, peer.PublicKey, strings.Join(peer.AllowedIPs, ","), peer.Endpoint))
