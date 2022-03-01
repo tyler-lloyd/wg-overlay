@@ -1,6 +1,7 @@
 package main
 
 import (
+	"aks-wireguard-overlay/pkg/overlay"
 	"context"
 	"flag"
 	"os"
@@ -34,12 +35,13 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-type WgNodwReconciler struct {
+//todo move controller into package
+type WireguardNodeReconciler struct {
 	client.Client
 	//Scheme *runtime.Scheme
 }
 
-func (r *WgNodwReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var node v1.Node
 	if err := r.Get(ctx, req.NamespacedName, &node); err != nil {
@@ -53,7 +55,7 @@ func (r *WgNodwReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *WgNodwReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *WireguardNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1.Node{}).
 		Complete(r)
@@ -74,9 +76,17 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	//better or worse to get from flag?
 	nodeName := os.Getenv("NODE_NAME")
 	nodeIP := os.Getenv("NODE_IP")
 	overlayCIDR := os.Getenv("OVERLAY_CIDR")
+
+	_ = overlay.Config{
+		NodeName:    nodeName,
+		UnderlayIP:  nodeIP,
+		OverlayCIDR: overlayCIDR,
+		OverlayIP:   overlay.OverlayIP(nodeIP, overlayCIDR),
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	cfg := ctrl.GetConfigOrDie()
@@ -89,7 +99,7 @@ func main() {
 	})
 	utilruntime.Must(err)
 
-	if err = (&WgNodwReconciler{
+	if err = (&WireguardNodeReconciler{
 		Client: mgr.GetClient(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "pod carsh")
