@@ -1,12 +1,12 @@
 package overlay
 
 import (
-	"aks-wireguard-overlay/pkg/wireguard"
 	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
+	"wg-overlay/pkg/wireguard"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -72,21 +72,6 @@ func (o *WireGuardNetworkService) syncHost() error {
 	}
 	o.wireguardConf.HostInterface = hostInterface
 
-	selfNode, err := o.kubeclient.CoreV1().Nodes().Get(context.TODO(), o.overlayConf.NodeName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	update, err := hostInterface.Annotate(selfNode)
-	if err != nil {
-		return err
-	}
-	if update {
-		_, err = o.kubeclient.CoreV1().Nodes().Update(context.TODO(), selfNode, metav1.UpdateOptions{})
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -99,15 +84,18 @@ func (o *WireGuardNetworkService) syncPeers() error {
 	o.wireguardConf.Peers = []wireguard.Peer{}
 
 	for _, node := range nodes.Items {
+		klog.Infof("checking node %s", node.Name)
 		if node.Name == o.overlayConf.NodeName {
 			continue
 		}
 
-		if peer, err := wireguard.FromNode(node); err != nil {
+		if peer, err := wireguard.FromNode(node); err == nil {
 			o.wireguardConf.Peers = append(o.wireguardConf.Peers, *peer)
-		} //else log err?
-
+		} else {
+			klog.Warningf("node %s is not recognized as a peer: %s", node.Name, err)
+		}
 	}
+	klog.Infof("reconciling %d peers", len(o.wireguardConf.Peers))
 	return nil
 }
 
@@ -117,23 +105,29 @@ func (o *WireGuardNetworkService) syncWireguardConfig() error {
 		return err
 	}
 	needWgQuickRestart := false
-	if actual.HostInterface != o.wireguardConf.HostInterface {
+	if actual.HostInterface.PrivateKey != o.wireguardConf.HostInterface.PrivateKey ||
+		actual.HostInterface.Address != o.wireguardConf.HostInterface.Address {
 		klog.Infof("actual interface %q does not match goal interface %q", actual.HostInterface, o.wireguardConf.HostInterface)
 		needWgQuickRestart = true
 	}
 
 	actualPeers := make(map[string]bool)
 	for _, peer := range actual.Peers {
+		klog.Info("adding actual peer %q", peer)
 		actualPeers[peer.PublicKey] = true // todo should hash the whole struct as key
 	}
 
 	for _, peer := range o.wireguardConf.Peers {
+		klog.Info("checking peer %q", peer)
 		if _, ok := actualPeers[peer.PublicKey]; !ok {
 			needWgQuickRestart = true
 		}
 	}
 
+	needWgQuickRestart = needWgQuickRestart || len(o.wireguardConf.Peers) != len(actualPeers)
+
 	if needWgQuickRestart {
+		klog.Infof("updating config %s", wireguard.DefaultWireGuardConf)
 		s := strings.Builder{}
 
 		s.WriteString(fmt.Sprintf(WireguardConfigurationInterfaceTemplate, o.wireguardConf.HostInterface.Address, wireguard.DefaultListenPort, o.wireguardConf.HostInterface.PrivateKey))

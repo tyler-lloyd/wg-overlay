@@ -1,10 +1,11 @@
 package main
 
 import (
-	"aks-wireguard-overlay/pkg/overlay"
-	"context"
 	"flag"
 	"os"
+	"wg-overlay/pkg/controllers"
+	"wg-overlay/pkg/overlay"
+	"wg-overlay/pkg/wireguard"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -14,14 +15,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	//+kubebuilder:scaffold:imports
 	v1 "k8s.io/api/core/v1"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -35,58 +34,29 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-//todo move controller into package
-type WireguardNodeReconciler struct {
-	client.Client
-	//Scheme *runtime.Scheme
-}
-
-func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	var node v1.Node
-	if err := r.Get(ctx, req.NamespacedName, &node); err != nil {
-		logger.Error(err, "unable to fetch node")
-		// we'll ignore not-found errors, since they can't be fixed by an immediate
-		// requeue (we'll need to wait for a new notification), and we can get them
-		// on deleted requests.
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
-	return ctrl.Result{}, nil
-}
-
-func (r *WireguardNodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1.Node{}).
-		Complete(r)
-}
-
 func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
+	var (
+		metricsAddr          string
+		enableLeaderElection bool
+		probeAddr            string
+		publicKey            string
+	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&publicKey, "public-key", "", "The wireguard public key of the node.")
+
+	config := overlay.Config{}
+	flag.StringVar(&config.OverlayCIDR, "overlay-cidr", "100.64.0.0/16", "The wireguard overlay address space.")
+	flag.StringVar(&config.NodeName, "node-name", "", "The node name this daemon is running on.")
+	flag.StringVar(&config.UnderlayIP, "node-ip", "", "The ip of the node this daemon is running on.")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
-
-	//better or worse to get from flag?
-	nodeName := os.Getenv("NODE_NAME")
-	nodeIP := os.Getenv("NODE_IP")
-	overlayCIDR := os.Getenv("OVERLAY_CIDR")
-
-	_ = overlay.Config{
-		NodeName:    nodeName,
-		UnderlayIP:  nodeIP,
-		OverlayCIDR: overlayCIDR,
-		OverlayIP:   overlay.OverlayIP(nodeIP, overlayCIDR),
-	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	cfg := ctrl.GetConfigOrDie()
@@ -98,11 +68,24 @@ func main() {
 		LeaderElection:         false,
 	})
 	utilruntime.Must(err)
+	config.OverlayIP = overlay.OverlayIP(config.UnderlayIP, config.OverlayCIDR)
+	hostInterface, err := wireguard.NewHost(config.OverlayIP)
+	setupLog.Info("setup host", "interface", hostInterface, "overlaycfg", config)
+	if err != nil {
+		setupLog.Error(err, "unable to load wireguard host configuration")
+		os.Exit(1)
+	}
+	controller := &controllers.WireguardNodeReconciler{
+		WgHost:      hostInterface,
+		OverlayConf: config,
+	}
+	err = builder.
+		ControllerManagedBy(mgr).
+		For(&v1.Node{}).
+		Complete(controller)
 
-	if err = (&WireguardNodeReconciler{
-		Client: mgr.GetClient(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "pod carsh")
+	if err != nil {
+		setupLog.Error(err, "failed to create the controller")
 		os.Exit(1)
 	}
 

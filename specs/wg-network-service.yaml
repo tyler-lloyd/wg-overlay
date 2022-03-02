@@ -58,6 +58,25 @@ spec:
           path: /etc/wireguard
           type: DirectoryOrCreate
       containers:
+      - name: wnc
+        image: tylloyd/wg-network-service:v20220301-a
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        command: ['/wnc']
+        args:
+        - --node-name=$(NODE_NAME)
+        - --node-ip=$(NODE_IP)
+        - --public-key=$(< /etc/wireguard/publickey)
+        volumeMounts:
+        - mountPath: /etc/wireguard
+          name: wg-vol
       - name: wireguard-network-service
         env:
         - name: OVERLAY_CIDR
@@ -70,7 +89,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: tylloyd/wg-network-service:v20220223-b
+        image: tylloyd/wg-network-service:v20220301-a
         imagePullPolicy: Always
         command: ["/wireguard-network-service"]
         volumeMounts:

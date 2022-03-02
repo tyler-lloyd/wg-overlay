@@ -1,8 +1,9 @@
 package wireguard
 
 import (
+	"bufio"
+	"fmt"
 	"os"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 )
@@ -16,19 +17,24 @@ const (
 type Host struct {
 	Address    string
 	PrivateKey string
+	PublicKey  string
 	ListenPort int
 }
 
 func NewHost(overlayip string) (Host, error) {
-	b, err := os.ReadFile(FileWireguardKeyPrivate)
+	privateKey, err := getPrivateKey()
 	if err != nil {
 		return Host{}, err
 	}
-	privateKey := string(b)
-	privateKey = strings.TrimRight(privateKey, "\n")
+
+	publicKey, err := getPublicKey()
+	if err != nil {
+		return Host{}, err
+	}
 	return Host{
 		Address:    overlayip, //o.overlayConf.OverlayIP,
 		PrivateKey: privateKey,
+		PublicKey:  publicKey,
 		ListenPort: DefaultListenPort,
 	}, nil
 }
@@ -40,16 +46,32 @@ func (hostInterface Host) Annotate(selfNode *v1.Node) (bool, error) {
 		update = true
 	}
 
-	b, err := os.ReadFile(FileWireguardKeyPublic)
-	if err != nil {
-		return false, err
-	}
-	pubKey := string(b)
-	pubKey = strings.TrimRight(pubKey, "\n")
+	pubKey := hostInterface.PublicKey
 	if pub, ok := selfNode.Annotations[WireguardPublicKeyAnnotationName]; !ok || pub != pubKey {
 		selfNode.Annotations[WireguardPublicKeyAnnotationName] = pubKey
 		update = true
 	}
 	return update, nil
+}
 
+func getPublicKey() (string, error) {
+	return getKeyFile(FileWireguardKeyPublic)
+}
+
+func getPrivateKey() (string, error) {
+	return getKeyFile(FileWireguardKeyPrivate)
+}
+
+func getKeyFile(filename string) (string, error) {
+	fd, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer fd.Close()
+
+	scanner := bufio.NewScanner(fd)
+	if scanner.Scan() {
+		return scanner.Text(), nil
+	}
+	return "", fmt.Errorf("failed to scan first line of file %s", filename)
 }
