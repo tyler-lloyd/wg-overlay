@@ -1,7 +1,7 @@
 package overlay
 
 import (
-	"aks-wireguard-overlay/pkg/wireguard"
+	"wg-overlay/pkg/wireguard"
 
 	"k8s.io/client-go/kubernetes"
 )

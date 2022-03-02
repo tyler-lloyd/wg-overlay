@@ -8,7 +8,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
-	"aks-wireguard-overlay/pkg/overlay"
+	"wg-overlay/pkg/overlay"
 )
 
 func newKubeClient() *kubernetes.Clientset {
