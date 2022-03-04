@@ -100,7 +100,7 @@ func (o *WireGuardNetworkService) syncPeers() error {
 }
 
 func (o *WireGuardNetworkService) syncWireguardConfig() error {
-	actual, err := wireguard.ParseConfFile(wireguard.DefaultWireGuardConf)
+	actual, err := wireguard.GetConfig(wireguard.DefaultInfName)
 	if err != nil {
 		return err
 	}

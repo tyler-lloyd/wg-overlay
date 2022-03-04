@@ -4,10 +4,14 @@ import (
 	"bufio"
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"golang.zx2c4.com/wireguard/wgctrl"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -16,6 +20,64 @@ const (
 	KeyValuePattern = `^(\S+)[\s]+=[\s]+(.+)$`
 )
 
+func GetConfig(deviceName string) (*Config, error) {
+	ief, err := net.InterfaceByName(deviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	addrs, err := ief.Addrs()
+	if err != nil {
+		return nil, err
+	}
+
+	var wireguardIP net.IP
+	for _, addr := range addrs {
+		if wireguardIP = addr.(*net.IPNet).IP.To4(); wireguardIP != nil {
+			break
+		}
+	}
+
+	c, err := wgctrl.New()
+	if err != nil {
+		return nil, err
+	}
+
+	dev, err := c.Device(deviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		HostInterface: Host{
+			PrivateKey: dev.PrivateKey.String(),
+			PublicKey:  dev.PublicKey.String(),
+			ListenPort: dev.ListenPort,
+		},
+	}
+	if wireguardIP != nil {
+		cfg.HostInterface.Address = wireguardIP.String()
+	} else {
+		klog.Warning("wireguard IP not set")
+	}
+
+	cfg.Peers = make([]Peer, 0)
+	for _, peer := range dev.Peers {
+		knownPeer := Peer{
+			PublicKey: peer.PublicKey.String(),
+			Endpoint:  peer.Endpoint.String(),
+		}
+
+		knownPeer.AllowedIPs = make([]string, 0)
+		for _, ipNet := range peer.AllowedIPs {
+			knownPeer.AllowedIPs = append(knownPeer.AllowedIPs, ipNet.String())
+		}
+
+		cfg.Peers = append(cfg.Peers, knownPeer)
+	}
+
+	return cfg, nil
+}
 func ParseConfFile(fileName string) (Config, error) {
 	config := Config{}
 	fd, err := os.Open(fileName)

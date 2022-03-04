@@ -125,7 +125,7 @@ spec:
               sleep 5
             done
       initContainers:
-      - name: wireguard-init
+      - name: wireguard-install
         image: busybox:latest
         securityContext:
           privileged: true
@@ -145,25 +145,15 @@ spec:
             echo "Installing wireguard..."
             sudo apt update
             sudo apt install -y wireguard
-            PRIVATE_KEY_FILE=/etc/wireguard/privatekey
-            PUBLIC_KEY_FILE=/etc/wireguard/publickey
-
-            if [ -f "$PRIVATE_KEY_FILE" ]; then
-              echo "private key already created"
-            else
-              sudo wg genkey > /etc/wireguard/privatekey
-            fi
-            
-            if [ -f "$PUBLIC_KEY_FILE" ]; then
-              echo "public key already created:"
-              cat /etc/wireguard/publickey
-            else
-              cat /etc/wireguard/privatekey | sudo wg pubkey > /etc/wireguard/publickey
-            fi
-            if [ -f "/etc/wireguard/wg0.conf" ]; then
-              echo "found existing wg0.conf"
-            else
-              touch /etc/wireguard/wg0.conf
-            fi
-            systemctl enable wg-quick@wg0.service
-            systemctl start wg-quick@wg0.service
+      - name: wg-init
+        image: tylloyd/wg-network-service:latest
+        env:
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        securityContext:
+          privileged: true
+        command: ['/wg-init']
+        args:
+        - --node-ip=$(NODE_IP)

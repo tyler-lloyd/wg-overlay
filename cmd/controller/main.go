@@ -9,6 +9,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"golang.zx2c4.com/wireguard/wgctrl"
 	"k8s.io/apimachinery/pkg/runtime"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
@@ -75,9 +76,16 @@ func main() {
 		setupLog.Error(err, "unable to load wireguard host configuration")
 		os.Exit(1)
 	}
+
+	wgClient, err := wgctrl.New()
+	if err != nil {
+		setupLog.Error(err, "unable to create wgCtrl client")
+		os.Exit(1)
+	}
 	controller := &controllers.WireguardNodeReconciler{
-		WgHost:      hostInterface,
-		OverlayConf: config,
+		Host:     hostInterface,
+		Config:   config,
+		WgClient: wgClient,
 	}
 	err = builder.
 		ControllerManagedBy(mgr).
