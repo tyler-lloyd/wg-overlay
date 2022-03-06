@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"wg-overlay/pkg/controllers"
@@ -89,7 +90,7 @@ func main() {
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
 		Complete(controller)
-	controller.HydrateCache()
+	controller.HydrateCache(context.Background())
 
 	if err != nil {
 		setupLog.Error(err, "failed to create the controller")
