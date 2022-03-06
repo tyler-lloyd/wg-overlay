@@ -85,11 +85,11 @@ func main() {
 		Config:   config,
 		WgClient: c,
 	}
-	controller.HydrateCache()
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
 		Complete(controller)
+	controller.HydrateCache()
 
 	if err != nil {
 		setupLog.Error(err, "failed to create the controller")
