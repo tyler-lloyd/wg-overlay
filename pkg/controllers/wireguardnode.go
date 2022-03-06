@@ -23,8 +23,8 @@ const (
 
 type WireguardNodeReconciler struct {
 	client.Client
-	wireguard.Host
 	overlay.Config
+	*wgtypes.Device
 	WgClient *wgctrl.Client
 	cache    map[string]wgtypes.Peer
 	//Scheme *runtime.Scheme
@@ -41,8 +41,8 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if node.Name == r.Config.NodeName {
-		if update, err := r.Host.Annotate(&node); update && err == nil {
+	if node.Name == r.NodeName {
+		if update, err := r.Annotate(&node); update && err == nil {
 			logger.Info("updating self annotations")
 			r.Update(ctx, &node, &client.UpdateOptions{})
 		} else if err != nil {
@@ -58,6 +58,21 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *WireguardNodeReconciler) Annotate(n *v1.Node) (bool, error) {
+	update := false
+	if ip, ok := n.Annotations[wireguard.IPAnnotationName]; !ok || ip != r.OverlayIP {
+		n.Annotations[wireguard.IPAnnotationName] = r.OverlayIP
+		update = true
+	}
+
+	pubKey := r.PublicKey.String()
+	if pub, ok := n.Annotations[wireguard.PublicKeyAnnotationName]; !ok || pub != pubKey {
+		n.Annotations[wireguard.PublicKeyAnnotationName] = pubKey
+		update = true
+	}
+	return update, nil
 }
 
 func (r *WireguardNodeReconciler) ReconcilePeer(peer wgtypes.Peer, op PeerOperation) error {
@@ -82,7 +97,7 @@ func (r *WireguardNodeReconciler) ReconcilePeer(peer wgtypes.Peer, op PeerOperat
 			},
 		}
 	}
-	err := r.WgClient.ConfigureDevice("wg0", cfg)
+	err := r.WgClient.ConfigureDevice(r.Name, cfg)
 	if err != nil {
 		return fmt.Errorf("ConfigureDevice failed: %w", err)
 	}
@@ -101,15 +116,8 @@ func (r *WireguardNodeReconciler) InjectClient(c client.Client) error {
 }
 
 func (r *WireguardNodeReconciler) HydrateCache(ctx context.Context) {
-	dev, err := r.WgClient.Device("wg0")
 	r.cache = make(map[string]wgtypes.Peer)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "failed to get device", "dev", "wg0")
-		return
-	}
-
-	for _, peer := range dev.Peers {
-		
+	for _, peer := range r.Peers {
 		r.cache[peer.PublicKey.String()] = peer
 	}
 }
