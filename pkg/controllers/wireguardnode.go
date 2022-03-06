@@ -33,6 +33,9 @@ type WireguardNodeReconciler struct {
 
 func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	if len(r.cache) == 0 {
+		r.HydrateCache(ctx)
+	}
 	var node v1.Node
 	if err := r.Get(ctx, req.NamespacedName, &node); err != nil {
 		if !errors.IsNotFound(err) {
@@ -70,8 +73,8 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else {
 		peer, err := wireguard.FromNode(node)
 		if err != nil {
-			// log error but wait for the next update on the node assuming annotations will get updated
 			logger.Error(err, "failed to get peer from node")
+			return ctrl.Result{}, nil
 		}
 		if pubKey, ok := r.cache[node.Name]; ok && pubKey == peer.PublicKey.String() {
 			logger.Info("node already configured as peer", "publickey", peer.PublicKey.String())
@@ -82,6 +85,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			logger.Error(err, "failed to reconcile peer")
 			return ctrl.Result{}, err
 		}
+		logger.Info("successfully added peer", "peer", *peer)
 		r.cache[node.Name] = peer.PublicKey.String()
 	}
 
@@ -113,13 +117,10 @@ func (r *WireguardNodeReconciler) ReconcilePeer(peer *wgtypes.Peer, op PeerOpera
 			},
 		},
 	}
-	switch op {
-	case Del:
+	if op == Del{
 		for i := range cfg.Peers {
 			cfg.Peers[i].Remove = true
 		}
-	default:
-		return nil
 	}
 	err := r.WgClient.ConfigureDevice(r.Name, cfg)
 	if err != nil {
@@ -145,9 +146,16 @@ func (r *WireguardNodeReconciler) HydrateCache(ctx context.Context) {
 		return
 	}
 
+	knownPeers := make(map[string]bool)
+	for _, peer := range r.Peers {
+		knownPeers[peer.PublicKey.String()] = true
+	}
+
 	r.cache = make(map[string]string)
 	for _, n := range nodes.Items {
-		publicKey, _ := n.Annotations[wireguard.PublicKeyAnnotationName]
-		r.cache[n.Name] = publicKey
+		publicKey := n.Annotations[wireguard.PublicKeyAnnotationName]
+		if ok := knownPeers[publicKey]; ok && publicKey != "" {
+			r.cache[n.Name] = publicKey
+		}
 	}
 }
