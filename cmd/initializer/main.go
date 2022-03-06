@@ -48,7 +48,7 @@ func main() {
 		klog.Fatalf("failed to check device %s", wireguardInterfaceName)
 	}
 
-	klog.Infof("%s device missing, setting up device", wireguardInterfaceName)
+	klog.Infof("wireguard device %s missing, setting up", wireguardInterfaceName)
 	wgIP := overlay.OverlayIP(nodeIP, overlayCIDR)
 
 	linkDev, err := setupWireGuardLinkDevice(wgIP, wireguardInterfaceName)

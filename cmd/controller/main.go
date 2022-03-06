@@ -6,7 +6,6 @@ import (
 	"os"
 	"wg-overlay/pkg/controllers"
 	"wg-overlay/pkg/overlay"
-	"wg-overlay/pkg/wireguard"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -71,22 +70,21 @@ func main() {
 	})
 	utilruntime.Must(err)
 	config.OverlayIP = overlay.OverlayIP(config.UnderlayIP, config.OverlayCIDR)
-	wgConfig, err := wireguard.GetConfig(wgDeviceName)
-	setupLog.Info("setup host", "interface", wgConfig.HostInterface, "overlaycfg", config)
-	if err != nil {
-		setupLog.Error(err, "unable to load wireguard host configuration")
-		os.Exit(1)
-	}
 
-	wgClient, err := wgctrl.New()
+	c, err := wgctrl.New()
 	if err != nil {
 		setupLog.Error(err, "unable to create wgCtrl client")
 		os.Exit(1)
 	}
+	wgDevice, err := c.Device(wgDeviceName)
+	if err != nil {
+		setupLog.Error(err, "unable to get wireguard device %s", wgDeviceName)
+		os.Exit(1)
+	}
 	controller := &controllers.WireguardNodeReconciler{
-		Host:     wgConfig.HostInterface,
+		Device:   wgDevice,
 		Config:   config,
-		WgClient: wgClient,
+		WgClient: c,
 	}
 	controller.HydrateCache(context.Background())
 	err = builder.

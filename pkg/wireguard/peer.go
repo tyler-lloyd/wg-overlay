@@ -15,13 +15,13 @@ type Peer struct {
 }
 
 func FromNode(node v1.Node) (*wgtypes.Peer, error) {
-	wgIP, hasIP := node.Annotations[WireguardIPAnnotationName]
+	wgIP, hasIP := node.Annotations[IPAnnotationName]
 	if !hasIP {
-		return nil, fmt.Errorf("%s missing %s", node.Name, WireguardIPAnnotationName)
+		return nil, fmt.Errorf("%s missing %s", node.Name, IPAnnotationName)
 	}
-	publicKeyString, hasPubKey := node.Annotations[WireguardPublicKeyAnnotationName]
+	publicKeyString, hasPubKey := node.Annotations[PublicKeyAnnotationName]
 	if !hasPubKey {
-		return nil, fmt.Errorf("%s missing %s", node.Name, WireguardPublicKeyAnnotationName)
+		return nil, fmt.Errorf("%s missing %s", node.Name, PublicKeyAnnotationName)
 	}
 	publicKey, err := wgtypes.ParseKey(publicKeyString)
 	if err != nil {
