@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"os"
 	"wg-overlay/pkg/controllers"
@@ -86,7 +85,7 @@ func main() {
 		Config:   config,
 		WgClient: c,
 	}
-	controller.HydrateCache(context.Background())
+	controller.HydrateCache()
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
