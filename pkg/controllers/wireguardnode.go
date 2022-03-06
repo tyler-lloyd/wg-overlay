@@ -52,8 +52,9 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		peer, err := wireguard.FromNode(node)
 		if err != nil {
 			logger.Error(err, "unable to get peer from node")
+		} else {
+			r.ReconcilePeer(*peer, Add)
 		}
-		r.ReconcilePeer(*peer, Add)
 	}
 
 	return ctrl.Result{}, nil
@@ -99,13 +100,16 @@ func (r *WireguardNodeReconciler) InjectClient(c client.Client) error {
 	return nil
 }
 
-func (r *WireguardNodeReconciler) HydrateCache() {
+func (r *WireguardNodeReconciler) HydrateCache(ctx context.Context) {
 	dev, err := r.WgClient.Device("wg0")
+	r.cache = make(map[string]wgtypes.Peer)
 	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to get device", "dev", "wg0")
 		return
 	}
 
 	for _, peer := range dev.Peers {
+		
 		r.cache[peer.PublicKey.String()] = peer
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"wg-overlay/pkg/controllers"
@@ -21,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	//+kubebuilder:scaffold:imports
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -31,7 +32,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(v1.AddToScheme(scheme))
+	utilruntime.Must(corev1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -40,14 +41,14 @@ func main() {
 		metricsAddr          string
 		enableLeaderElection bool
 		probeAddr            string
-		publicKey            string
+		wgDeviceName         string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&wgDeviceName, "wg-dev", "wg0", "The device name of the wireguard interface.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&publicKey, "public-key", "", "The wireguard public key of the node.")
 
 	config := overlay.Config{}
 	flag.StringVar(&config.OverlayCIDR, "overlay-cidr", "100.64.0.0/16", "The wireguard overlay address space.")
@@ -70,8 +71,8 @@ func main() {
 	})
 	utilruntime.Must(err)
 	config.OverlayIP = overlay.OverlayIP(config.UnderlayIP, config.OverlayCIDR)
-	hostInterface, err := wireguard.NewHost(config.OverlayIP)
-	setupLog.Info("setup host", "interface", hostInterface, "overlaycfg", config)
+	wgConfig, err := wireguard.GetConfig(wgDeviceName)
+	setupLog.Info("setup host", "interface", wgConfig.HostInterface, "overlaycfg", config)
 	if err != nil {
 		setupLog.Error(err, "unable to load wireguard host configuration")
 		os.Exit(1)
@@ -83,13 +84,14 @@ func main() {
 		os.Exit(1)
 	}
 	controller := &controllers.WireguardNodeReconciler{
-		Host:     hostInterface,
+		Host:     wgConfig.HostInterface,
 		Config:   config,
 		WgClient: wgClient,
 	}
+	controller.HydrateCache(context.Background())
 	err = builder.
 		ControllerManagedBy(mgr).
-		For(&v1.Node{}).
+		For(&corev1.Node{}).
 		Complete(controller)
 
 	if err != nil {
