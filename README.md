@@ -1,5 +1,8 @@
 # kubernetes wireguard overlay
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/tyler-lloyd/kubernetes-wireguard-overlay)](https://goreportcard.com/report/github.com/tyler-lloyd/kubernetes-wireguard-overlay)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/tyler-lloyd/kubernetes-wireguard-overlay)
+
 ## About
 
 [WireGuard](https://www.wireguard.com/) is a [high-performance](https://www.wireguard.com/performance/) vpn built into the Linux kernel with simplistic interfaces to setup encrypted connections between two devices quickly. Due to the ease of use, WireGuard can make an efficient mesh network seen in projects like [Tailscale](https://tailscale.com/kb/1151/what-is-tailscale/). This idea can extend to a Kubernetes cluster where the network infrastructure may have limitations that can be circumvented via encapsulation between nodes to create an overlay network for services and pods. In this implementation, nodes are still assigned a PodCIDR which is the subnet for pod IPs on that node locally and will be connected via a bridge, but all traffic leaving the node from the pods will leverage the WireGuard connections between nodes.
