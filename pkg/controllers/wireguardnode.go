@@ -3,9 +3,10 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"wg-overlay/pkg/overlay"
 	"wg-overlay/pkg/wireguard"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -15,17 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type PeerOperation string
-
-const (
-	Add PeerOperation = "ADD"
-	Del PeerOperation = "DEL"
-)
-
 type WireguardNodeReconciler struct {
 	client.Client
 	overlay.Config
-	*wgtypes.Device
+	WgDevice *wgtypes.Device
 	WgClient *wgctrl.Client
 	cache    map[string]string
 	//Scheme *runtime.Scheme
@@ -34,7 +28,9 @@ type WireguardNodeReconciler struct {
 func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if len(r.cache) == 0 {
-		r.HydrateCache(ctx)
+		// cache should contain at least the node it is running on so if cache is empty
+		// then it must be hydrated
+		r.hydrateCache(ctx)
 	}
 	var node v1.Node
 	if err := r.Get(ctx, req.NamespacedName, &node); err != nil {
@@ -50,7 +46,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 			peerToDelete := &wgtypes.Peer{PublicKey: key}
 
-			err = r.ReconcilePeer(peerToDelete, Del)
+			err = r.ReconcilePeer(peerToDelete, true)
 			if err != nil {
 				logger.Error(err, "failed to delete peer")
 				return ctrl.Result{}, err
@@ -80,7 +76,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			logger.Info("node already configured as peer", "publickey", peer.PublicKey.String())
 			return ctrl.Result{}, nil
 		}
-		err = r.ReconcilePeer(peer, Add)
+		err = r.ReconcilePeer(peer, false)
 		if err != nil {
 			logger.Error(err, "failed to reconcile peer")
 			return ctrl.Result{}, err
@@ -99,7 +95,7 @@ func (r *WireguardNodeReconciler) Annotate(n *v1.Node) (bool, error) {
 		update = true
 	}
 
-	pubKey := r.PublicKey.String()
+	pubKey := r.WgDevice.PublicKey.String()
 	if pub, ok := n.Annotations[wireguard.PublicKeyAnnotationName]; !ok || pub != pubKey {
 		n.Annotations[wireguard.PublicKeyAnnotationName] = pubKey
 		update = true
@@ -107,7 +103,7 @@ func (r *WireguardNodeReconciler) Annotate(n *v1.Node) (bool, error) {
 	return update, nil
 }
 
-func (r *WireguardNodeReconciler) ReconcilePeer(peer *wgtypes.Peer, op PeerOperation) error {
+func (r *WireguardNodeReconciler) ReconcilePeer(peer *wgtypes.Peer, isDelete bool) error {
 	cfg := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{
 			{
@@ -117,12 +113,12 @@ func (r *WireguardNodeReconciler) ReconcilePeer(peer *wgtypes.Peer, op PeerOpera
 			},
 		},
 	}
-	if op == Del{
+	if isDelete {
 		for i := range cfg.Peers {
 			cfg.Peers[i].Remove = true
 		}
 	}
-	err := r.WgClient.ConfigureDevice(r.Name, cfg)
+	err := r.WgClient.ConfigureDevice(r.WgDevice.Name, cfg)
 	if err != nil {
 		return fmt.Errorf("ConfigureDevice failed: %w", err)
 	}
@@ -134,7 +130,7 @@ func (r *WireguardNodeReconciler) InjectClient(c client.Client) error {
 	return nil
 }
 
-func (r *WireguardNodeReconciler) HydrateCache(ctx context.Context) {
+func (r *WireguardNodeReconciler) hydrateCache(ctx context.Context) {
 	if r.Client == nil {
 		log.FromContext(ctx).Info("client not initialized, cannot load cache")
 		return
@@ -147,7 +143,7 @@ func (r *WireguardNodeReconciler) HydrateCache(ctx context.Context) {
 	}
 
 	knownPeers := make(map[string]bool)
-	for _, peer := range r.Peers {
+	for _, peer := range r.WgDevice.Peers {
 		knownPeers[peer.PublicKey.String()] = true
 	}
 

@@ -81,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 	controller := &controllers.WireguardNodeReconciler{
-		Device:   wgDevice,
+		WgDevice: wgDevice,
 		Config:   config,
 		WgClient: c,
 	}
