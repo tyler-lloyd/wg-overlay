@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sync"
 	"wg-overlay/pkg/overlay"
 	"wg-overlay/pkg/wireguard"
 
@@ -22,7 +23,26 @@ type WireguardNodeReconciler struct {
 	WgDevice *wgtypes.Device
 	WgClient *wgctrl.Client
 	cache    map[string]string
+	mu       sync.RWMutex
 	//Scheme *runtime.Scheme
+}
+
+func (r *WireguardNodeReconciler) put(key, val string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cache[key] = val
+}
+func (r *WireguardNodeReconciler) del(key string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.cache, key)
+}
+
+func (r *WireguardNodeReconciler) get(key string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	val, ok := r.cache[key]
+	return val, ok
 }
 
 func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -38,7 +58,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			logger.Error(err, "unable to fetch node")
 			return ctrl.Result{}, err
 		}
-		if pubKey, ok := r.cache[req.Name]; ok {
+		if pubKey, ok := r.get(req.Name); ok {
 			key, err := wgtypes.ParseKey(pubKey)
 			if err != nil {
 				logger.Error(err, "failed to parse public key", "key", pubKey)
@@ -51,7 +71,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				logger.Error(err, "failed to delete peer")
 				return ctrl.Result{}, err
 			}
-			delete(r.cache, req.Name)
+			r.del(req.Name)
 		}
 		return ctrl.Result{}, nil
 	}
@@ -72,7 +92,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			logger.Error(err, "failed to get peer from node")
 			return ctrl.Result{}, nil
 		}
-		if pubKey, ok := r.cache[node.Name]; ok && pubKey == peer.PublicKey.String() {
+		if pubKey, ok := r.get(node.Name); ok && pubKey == peer.PublicKey.String() {
 			logger.Info("node already configured as peer", "publickey", peer.PublicKey.String())
 			return ctrl.Result{}, nil
 		}
@@ -82,7 +102,7 @@ func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 		logger.Info("successfully added peer", "peer", *peer)
-		r.cache[node.Name] = peer.PublicKey.String()
+		r.put(node.Name, peer.PublicKey.String())
 	}
 
 	return ctrl.Result{}, nil
@@ -151,7 +171,7 @@ func (r *WireguardNodeReconciler) hydrateCache(ctx context.Context) {
 	for _, n := range nodes.Items {
 		publicKey := n.Annotations[wireguard.PublicKeyAnnotationName]
 		if ok := knownPeers[publicKey]; ok && publicKey != "" {
-			r.cache[n.Name] = publicKey
+			r.put(n.Name, publicKey)
 		}
 	}
 }
