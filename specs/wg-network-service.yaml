@@ -52,14 +52,11 @@ spec:
       hostIPC: true
       terminationGracePeriodSeconds: 0
       serviceAccountName: wg-overlay-service
-      volumes:
-      - name: wg-vol
-        hostPath:
-          path: /etc/wireguard
-          type: DirectoryOrCreate
       containers:
       - name: wnc
-        image: tylloyd/wg-network-service:v20220301-a
+        image: tylloyd/wg-network-service:latest
+        securityContext:
+          privileged: true
         env:
         - name: NODE_NAME
           valueFrom:
@@ -73,97 +70,42 @@ spec:
         args:
         - --node-name=$(NODE_NAME)
         - --node-ip=$(NODE_IP)
-        - --public-key=$(< /etc/wireguard/publickey)
-        volumeMounts:
-        - mountPath: /etc/wireguard
-          name: wg-vol
-      - name: wireguard-network-service
+      initContainers:
+      - name: wireguard-install
+        image: busybox:latest
+        securityContext:
+          privileged: true
+        command:
+          - nsenter
+          - --target
+          - "1"
+          - --mount
+          - --uts
+          - --ipc
+          - --net
+          - --pid
+          - --
+          - bash
+          - -c
+          - |
+            echo 'installing wireguard'
+            found=$(dpkg -s wireguard | grep 'install ok installed')
+            if [ "$found" = "" ];
+            then
+              sudo apt update
+              sudo apt install -y wireguard
+            else
+              echo 'wireguard already installed'
+            fi
+      - name: wg-init
+        image: tylloyd/wg-network-service:latest
         env:
-        - name: OVERLAY_CIDR
-          value: 100.64.0.0/16
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
         - name: NODE_IP
           valueFrom:
             fieldRef:
               fieldPath: status.hostIP
-        image: tylloyd/wg-network-service:v20220301-a
-        imagePullPolicy: Always
-        command: ["/wireguard-network-service"]
-        volumeMounts:
-        - mountPath: /etc/wireguard
-          name: wg-vol
-      - name: wns-sync
-        image: busybox:latest
         securityContext:
           privileged: true
-        command:
-          - nsenter
-          - --target
-          - "1"
-          - --mount
-          - --uts
-          - --ipc
-          - --net
-          - --pid
-          - --
-          - bash
-          - -ce
-          - |
-            while :
-            do
-              echo "checking wireguard config ... "
-              if [ -f "/etc/wireguard/update" ]; then
-                echo "updating wg-quick@wg0.service"
-                systemctl restart wg-quick@wg0.service
-                rm /etc/wireguard/update
-              else
-                echo "re-sync in 5 sec"
-              fi
-              sleep 5
-            done
-      initContainers:
-      - name: wireguard-init
-        image: busybox:latest
-        securityContext:
-          privileged: true
-        command:
-          - nsenter
-          - --target
-          - "1"
-          - --mount
-          - --uts
-          - --ipc
-          - --net
-          - --pid
-          - --
-          - bash
-          - -ce
-          - |
-            echo "Installing wireguard..."
-            sudo apt update
-            sudo apt install -y wireguard
-            PRIVATE_KEY_FILE=/etc/wireguard/privatekey
-            PUBLIC_KEY_FILE=/etc/wireguard/publickey
-
-            if [ -f "$PRIVATE_KEY_FILE" ]; then
-              echo "private key already created"
-            else
-              sudo wg genkey > /etc/wireguard/privatekey
-            fi
-            
-            if [ -f "$PUBLIC_KEY_FILE" ]; then
-              echo "public key already created:"
-              cat /etc/wireguard/publickey
-            else
-              cat /etc/wireguard/privatekey | sudo wg pubkey > /etc/wireguard/publickey
-            fi
-            if [ -f "/etc/wireguard/wg0.conf" ]; then
-              echo "found existing wg0.conf"
-            else
-              touch /etc/wireguard/wg0.conf
-            fi
-            systemctl enable wg-quick@wg0.service
-            systemctl start wg-quick@wg0.service
+        command: ['/wg-init']
+        args:
+        - --node-ip=$(NODE_IP)

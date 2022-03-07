@@ -2,7 +2,9 @@ package wireguard
 
 import (
 	"fmt"
+	"net"
 
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -12,21 +14,38 @@ type Peer struct {
 	Endpoint   string
 }
 
-func FromNode(node v1.Node) (*Peer, error) {
-	wgIP, hasIP := node.Annotations[WireguardIPAnnotationName]
+func FromNode(node v1.Node) (*wgtypes.Peer, error) {
+	wgIP, hasIP := node.Annotations[IPAnnotationName]
 	if !hasIP {
-		return nil, fmt.Errorf("%s missing %s", node.Name, WireguardIPAnnotationName)
+		return nil, fmt.Errorf("%s missing %s", node.Name, IPAnnotationName)
 	}
-	publicKey, hasPubKey := node.Annotations[WireguardPublicKeyAnnotationName]
+	publicKeyString, hasPubKey := node.Annotations[PublicKeyAnnotationName]
 	if !hasPubKey {
-		return nil, fmt.Errorf("%s missing %s", node.Name, WireguardPublicKeyAnnotationName)
+		return nil, fmt.Errorf("%s missing %s", node.Name, PublicKeyAnnotationName)
 	}
-	allowedIPs := node.Spec.PodCIDRs
-	allowedIPs = append(allowedIPs, wgIP+"/32")
-	return &Peer{
+	publicKey, err := wgtypes.ParseKey(publicKeyString)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse key %s", publicKeyString)
+	}
+	allowedCIDRs := node.Spec.PodCIDRs
+	allowedCIDRs = append(allowedCIDRs, wgIP+"/32")
+
+	allowedIPs := make([]net.IPNet, 0)
+
+	for _, cidr := range allowedCIDRs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
+		}
+		allowedIPs = append(allowedIPs, *ipNet)
+	}
+	return &wgtypes.Peer{
 		PublicKey:  publicKey,
 		AllowedIPs: allowedIPs,
-		Endpoint:   fmt.Sprintf("%s:%d", getHostEndpoint(node), DefaultListenPort),
+		Endpoint: &net.UDPAddr{
+			IP:   net.ParseIP(getHostEndpoint(node)),
+			Port: DefaultListenPort,
+		},
 	}, nil
 }
 
@@ -36,5 +55,5 @@ func getHostEndpoint(node v1.Node) string {
 			return addr.Address
 		}
 	}
-	return "" //error?
+	panic("getHostEndpoint failed to get NodeInternalIP")
 }
