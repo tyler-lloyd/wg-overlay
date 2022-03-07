@@ -2,17 +2,17 @@ package overlay
 
 import (
 	"net"
-	"strings"
 )
 
 func OverlayIP(hostIP, overlayCIDR string) string {
 	// todo implment proper ip allocation
-	if strings.Count(hostIP, ":") > 2 {
-		// implement rfc 4193 ipv6 generation
-		return ""
-	}
 	_, overlayNet, err := net.ParseCIDR(overlayCIDR)
 	if err != nil {
+		return ""
+	}
+
+	if overlayNet.IP.To4() == nil {
+		// implement rfc 4193 ipv6 generation
 		return ""
 	}
 

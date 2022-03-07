@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"os"
 	"wg-overlay/pkg/controllers"
@@ -82,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 	controller := &controllers.WireguardNodeReconciler{
-		Device:   wgDevice,
+		WgDevice: wgDevice,
 		Config:   config,
 		WgClient: c,
 	}
@@ -90,7 +89,6 @@ func main() {
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
 		Complete(controller)
-	controller.HydrateCache(context.Background())
 
 	if err != nil {
 		setupLog.Error(err, "failed to create the controller")
