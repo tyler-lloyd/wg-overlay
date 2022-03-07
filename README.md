@@ -6,9 +6,9 @@
 
 WireGuard interfaces are setup and maintained with a dance between `wg(8)` and `ip(8)`. The WireGuard utility `wg` is responsible for setting and retrieving the current state of WireGuard devices on a host, while `ip` handles typical Linux networking components needed for the WireGuard overlay to work, namely networking devices (`ip-link(8)`) and routes. For performing the steps of this dance, this project uses [wgctrl](https://pkg.go.dev/golang.zx2c4.com/wireguard/wgctrl) for interacting with `wg` and [vishvananda/netlink](https://pkg.go.dev/github.com/vishvananda/netlink) for ensuring the link and routes are appropriately set on a host. **Note:** under the hood, wgctrl uses [mdlayher/netlink](https://pkg.go.dev/github.com/mdlayher/netlink) as its `netlink(7)` library.
 
-In an effort to maximize performance, the WireGuard state on every node is handled in software and no data is persisted to disk (keys or config files). This also means there is an absence of using `wg-quick(8)` for bringing up or re-syncing a config for the WireGuard interface. Once a node joins the Kubernetes cluster, it will annotate itself with its WireGuard public key and IP and add all other nodes in the cluster as WireGuard peers. Once the newly added node annotates itself, the other nodes will see this update and add the new node as a new peer. Similarly, once a node is deleted then all other nodes see this delete operation and remove the node as a WireGuard peer.
+In an effort to maximize performance, the WireGuard state on every node is handled in software and no data is persisted to disk (keys or config files). This also means there is an absence of using `wg-quick(8)` for bringing up or re-syncing a config for the WireGuard interface. Once a node joins the Kubernetes cluster, it will annotate itself with its WireGuard public key and IP and add all other nodes in the cluster as WireGuard peers. Once the newly added node annotates itself, the other nodes receive this update event and can add the node as peer. Similarly, once a node is deleted the remaining nodes are notified and remove the node from their list of peers.
 
-Because the overlay network exists as connections between nodes, each node in the cluster needs to become a WireGuard device and then maintain the state of the overlay by watching other nodes as they're created/updated/deleted. Therefore, this service runs as a daemonset on a cluster, ensuring each node has an agent to ensure the local WireGuard state is configured correctly. There are two components to accomplish this:
+Because the overlay network exists as connections between nodes, each node in the cluster needs to become a WireGuard device and then maintain the state of the overlay by watching other nodes as they're created/updated/deleted. Therefore, this service runs as a daemonset in a cluster. Each node has an agent to ensure the local WireGuard state is configured correctly. There are two components to accomplish this:
 
 ### WireGuard Initializer (wg-init)
 
@@ -24,7 +24,7 @@ The WireGuard Network Controller runs on each node and watches all other nodes, 
 
 ## Installation
 
-The wireguard network service (wns) daemon and all necessary dependencies can be installed with.
+The WireGuard Network Controller (wnc) and all necessary dependencies can be installed with.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/tyler-lloyd/kubernetes-wireguard-overlay/main/specs/wg-network-service.yaml
@@ -32,6 +32,10 @@ kubectl apply -f https://raw.githubusercontent.com/tyler-lloyd/kubernetes-wiregu
 
 This service's potential is met when the underlying network between nodes has scaling limitations around routing (e.g. route tables in Azure) or it is desired to have cluster traffic be encrypted between nodes over the network.
 
-## Limitations
+## Limitations/TODO
 
-- currently, it is assumed the node CIDR will not be using a prefix shorter than `/16` and not be in the `100.64.0.0/16` range. Therefore to keep the overlay IP management as simple as possible, the network service keeps the lower 2 octects from the IPv4 node IP and changes the first two to the default overlay subnet mask `100.64`. 
+- To keep the overlay IPAM as simple as possible, each node's WireGuard IP is computed by taking the lower two octets of the `spec.hostIP` and merging it with the mask of `100.64.0.0/16` by default. It is assumed the node CIDR will not be using a prefix shorter than `/16` and not be in the `100.64.0.0/16` range.
+- Does not remove reference to old peer if a key is rotated. If a node rotates its keys then all nodes will add this as a new peer, leaving a stale reference in its list of peers. The new peer will still work as expected as the endpoint will move to the new public key.
+- No cleanup of peers that do no exist in the cluster. Each node assumes the metadata for every peer is in the cluster via annotations on the nodes or will eventually be added for new nodes. There could be a case where a node is deleted and a controller on another node crashes at the same time which would prevent the deleted node from being removed as a peer.
+- Logging in the controller is leftover from kubebuilder and is not in a great format (and continues to have development mode turned on).
+- Still lingering init-container for installing wireguard if needed (assumed apt based package management). Won't be needed for any systems using kernel 5.6+ or have already installed wireguard on their hosts.
