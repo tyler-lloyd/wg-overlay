@@ -4,6 +4,7 @@ import (
 	"net"
 )
 
+// OverlayIP generates an IP to be used in an overlay network
 func OverlayIP(hostIP, overlayCIDR string) string {
 	// todo implment proper ip allocation
 	_, overlayNet, err := net.ParseCIDR(overlayCIDR)

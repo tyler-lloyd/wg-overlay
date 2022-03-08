@@ -8,21 +8,21 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
+// Peer is a custom WireGuard peer type.
+// todo(tyler-lloyd) remove usage eventually and only use wgctrl/wgtypes.Peer
 type Peer struct {
 	PublicKey  string
 	AllowedIPs []string
 	Endpoint   string
 }
 
+// FromNode returns a valid WireGuard peer if the node has the necessary metadata
 func FromNode(node v1.Node) (*wgtypes.Peer, error) {
-	wgIP, hasIP := node.Annotations[IPAnnotationName]
-	if !hasIP {
-		return nil, fmt.Errorf("%s missing %s", node.Name, IPAnnotationName)
+	publicKeyString, wgIP, err := publicKeyAndEndpoint(node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract public key and endpoint: %w", err)
 	}
-	publicKeyString, hasPubKey := node.Annotations[PublicKeyAnnotationName]
-	if !hasPubKey {
-		return nil, fmt.Errorf("%s missing %s", node.Name, PublicKeyAnnotationName)
-	}
+
 	publicKey, err := wgtypes.ParseKey(publicKeyString)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse key %s", publicKeyString)
@@ -47,6 +47,19 @@ func FromNode(node v1.Node) (*wgtypes.Peer, error) {
 			Port: DefaultListenPort,
 		},
 	}, nil
+}
+
+func publicKeyAndEndpoint(node v1.Node) (string, string, error) {
+	ip, okIP := node.Annotations[IPAnnotationName]
+	if !okIP {
+		return "", "", fmt.Errorf("node %s missing %s", node.Name, IPAnnotationName)
+	}
+
+	pubKey, okPubKey := node.Annotations[PublicKeyAnnotationName]
+	if !okPubKey {
+		return "", "", fmt.Errorf("node %s missing %s", node.Name, PublicKeyAnnotationName)
+	}
+	return pubKey, ip, nil
 }
 
 func getHostEndpoint(node v1.Node) string {

@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"os"
-	"wg-overlay/pkg/controllers"
-	"wg-overlay/pkg/overlay"
+
+	"github.com/tyler-lloyd/wg-overlay/pkg/controllers"
+	"github.com/tyler-lloyd/wg-overlay/pkg/overlay"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.

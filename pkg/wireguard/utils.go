@@ -7,6 +7,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
+// GetConfig builds the current WireGuard configuration of the host.
+// This uses the custom Config type because the wgctrl device type does not
+// return the IP used by the wireguard interface.
 func GetConfig(deviceName string) (*Config, error) {
 	link, err := netlink.LinkByName(deviceName)
 	if err != nil {
