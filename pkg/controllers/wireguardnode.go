@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"wg-overlay/pkg/overlay"
-	"wg-overlay/pkg/wireguard"
+
+	"github.com/tyler-lloyd/wg-overlay/pkg/overlay"
+	"github.com/tyler-lloyd/wg-overlay/pkg/wireguard"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -17,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// WireguardNodeReconciler is the controller for reconciling each node as a WireGuard peer
+// in the cluster. There is a 1:1 relationship between a reconciler and a specific node.
 type WireguardNodeReconciler struct {
 	client.Client
 	overlay.Config
@@ -36,6 +39,7 @@ func (r *WireguardNodeReconciler) syncCache(ctx context.Context) {
 	}
 }
 
+// Reconcile receives events from the kube-apiserver to reconcile the state of the given node
 func (r *WireguardNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	r.syncCache(ctx)
@@ -132,11 +136,16 @@ func (r *WireguardNodeReconciler) ReconcilePeer(peer *wgtypes.Peer, isDelete boo
 	return nil
 }
 
+// InjectClient sets the kubeclient on the controller
 func (r *WireguardNodeReconciler) InjectClient(c client.Client) error {
 	r.Client = c
 	return nil
 }
 
+// hydrateCache will build a new cache of nodes with the node name as the key
+// and the WireGuard public key as the value. This makes deleting a peer trivial as
+// the node state may be unavailable during deletion and the node name is the only
+// piece of information given during the event.
 func (r *WireguardNodeReconciler) hydrateCache(ctx context.Context) {
 	if r.Client == nil {
 		log.FromContext(ctx).Info("client not initialized, cannot load cache")

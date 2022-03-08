@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"wg-overlay/pkg/overlay"
-	"wg-overlay/pkg/wireguard"
+
+	"github.com/tyler-lloyd/wg-overlay/pkg/overlay"
+	"github.com/tyler-lloyd/wg-overlay/pkg/wireguard"
 
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -15,6 +16,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// EmptyWireGuardKey is the empty, 256 bit WireGuard key
 const EmptyWireGuardKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
 // ensureRoutes takes destinations in the form of IP or CIDR and will
