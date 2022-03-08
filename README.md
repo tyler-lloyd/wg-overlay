@@ -1,7 +1,9 @@
-# kubernetes wireguard overlay
+# wg-overlay
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/tyler-lloyd/kubernetes-wireguard-overlay)](https://goreportcard.com/report/github.com/tyler-lloyd/kubernetes-wireguard-overlay)
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/tyler-lloyd/kubernetes-wireguard-overlay)
+[![Go Report Card](https://goreportcard.com/badge/github.com/tyler-lloyd/wg-overlay)](https://goreportcard.com/report/github.com/tyler-lloyd/wg-overlay)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/tyler-lloyd/wg-overlay)
+
+An encrypted, layer 3 Kubernetes overlay network built on WireGuard.
 
 ## About
 
